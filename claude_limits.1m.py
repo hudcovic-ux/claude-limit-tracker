@@ -34,7 +34,7 @@ import tls_client
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
 
-SCRIPT_DIR  = os.path.dirname(os.path.abspath(__file__))
+SCRIPT_DIR  = os.path.dirname(os.path.realpath(__file__))
 CONFIG_FILE = os.path.join(SCRIPT_DIR, "config.json")
 CACHE_FILE  = os.path.join(SCRIPT_DIR, "cache.json")
 COOKIES_DB  = os.path.expanduser(
