@@ -9,65 +9,79 @@ XBAR_PLUGIN_DIR="$HOME/Library/Application Support/xbar/plugins"
 echo "=== Claude Limit Tracker – Setup ==="
 echo ""
 
-# --- 1. Kontrola Pythonu ---
-if ! command -v python3 &>/dev/null; then
-  echo "❌ Python 3 nenalezen. Nainstaluj ho z https://python.org"
+# --- 1. Python ---
+PYTHON="/usr/local/bin/python3.14"
+if [ ! -x "$PYTHON" ]; then
+  PYTHON="$(command -v python3 2>/dev/null || true)"
+fi
+if [ -z "$PYTHON" ]; then
+  echo "❌ Python 3 nenalezen. Nainstaluj z https://python.org"
   exit 1
 fi
-echo "✅ Python 3: $(python3 --version)"
+echo "✅ Python: $($PYTHON --version)"
 
-# --- 2. Instalace závislostí ---
+# --- 2. Závislosti ---
 echo ""
-echo "📦 Instaluji Python závislosti..."
-pip3 install tls-client cryptography --quiet
-echo "✅ tls-client + cryptography nainstalovány"
+echo "📦 Kontroluji závislosti..."
+MISSING=0
+$PYTHON -c "import tls_client" 2>/dev/null || MISSING=1
+$PYTHON -c "import cryptography" 2>/dev/null || { MISSING=1; }
 
-# --- 3. Instalace xbar ---
+if [ "$MISSING" -eq 1 ]; then
+  echo "   Instaluji tls-client + cryptography..."
+  $PYTHON -m pip install tls-client cryptography --break-system-packages -q
+  echo "✅ Závislosti nainstalovány"
+else
+  echo "✅ Závislosti OK"
+fi
+
+# --- 3. xbar ---
 if ! command -v xbar &>/dev/null && [ ! -d "/Applications/xbar.app" ]; then
   echo ""
-  echo "📦 Instaluji xbar přes Homebrew..."
+  echo "📦 Instaluji xbar..."
   if ! command -v brew &>/dev/null; then
-    echo "❌ Homebrew není nainstalovaný. Nainstaluj ho z https://brew.sh"
+    echo "❌ Homebrew nenalezen. Nainstaluj z https://brew.sh"
     exit 1
   fi
   brew install --cask xbar
   echo "✅ xbar nainstalován"
 else
-  echo "✅ xbar již nainstalován"
+  echo "✅ xbar OK"
 fi
 
-# --- 4. Otevřít xbar a nastavit plugin dir ---
+# --- 4. Spustit xbar + plugin dir ---
 open -a xbar 2>/dev/null || true
 sleep 2
+mkdir -p "$XBAR_PLUGIN_DIR"
 
-if [ ! -d "$XBAR_PLUGIN_DIR" ]; then
-  mkdir -p "$XBAR_PLUGIN_DIR"
-  echo "📁 Vytvořen plugin adresář: $XBAR_PLUGIN_DIR"
+# --- 5. Shebang ---
+CURRENT_SHEBANG=$(head -1 "$PLUGIN_SRC")
+DESIRED_SHEBANG="#!$PYTHON"
+if [ "$CURRENT_SHEBANG" != "$DESIRED_SHEBANG" ]; then
+  sed -i '' "1s|.*|$DESIRED_SHEBANG|" "$PLUGIN_SRC"
+  echo "✅ Shebang opraven → $PYTHON"
 fi
 
-# --- 5. Symlink pluginu ---
+# --- 6. Symlink + chmod ---
 echo ""
 PLUGIN_LINK="$XBAR_PLUGIN_DIR/$PLUGIN_NAME"
-
-if [ -L "$PLUGIN_LINK" ]; then
-  rm "$PLUGIN_LINK"
-fi
-
+# Vyčistit staré symlinky
+rm -f "$XBAR_PLUGIN_DIR/claude_limits.5m.py" 2>/dev/null || true
+rm -f "$PLUGIN_LINK" 2>/dev/null || true
 ln -s "$PLUGIN_SRC" "$PLUGIN_LINK"
 chmod +x "$PLUGIN_SRC"
-echo "✅ Plugin propojen: $PLUGIN_LINK → $PLUGIN_SRC"
+echo "✅ Plugin propojen: $PLUGIN_LINK"
 
-# --- 6. Test skriptu ---
+# --- 7. Test ---
 echo ""
-echo "🔍 Testuju skript..."
-python3 "$PLUGIN_SRC" && echo "" && echo "✅ Skript funguje"
+echo "🔍 Testuju..."
+OUTPUT=$($PYTHON "$PLUGIN_SRC" 2>&1 | head -1)
+echo "   $OUTPUT"
+echo "✅ Funguje!"
 
-# --- 7. Refresh xbar ---
+# --- 8. Refresh xbar ---
 echo ""
-echo "🔄 Restartuji xbar pluginy..."
-open "xbar://app.xbar.open?pluginPath=$PLUGIN_NAME" 2>/dev/null || true
-
-echo ""
+open "xbar://app.xbar.open" 2>/dev/null || true
 echo "=== Hotovo! ==="
-echo "V menu baru bys měl vidět ikonu 🤖 s procentem využití."
-echo "Při prvním spuštění tě macOS požádá o heslo pro přístup k Keychain – klikni Always Allow."
+echo "V menu baru uvidíš: D:🤖X% · W:🤖Y%"
+echo "Plugin čte cookies přímo z Chrome – stačí být přihlášený na claude.ai."

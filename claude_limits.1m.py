@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/local/bin/python3.14
 # -*- coding: utf-8 -*-
 # <xbar.title>Claude Limit Tracker</xbar.title>
 # <xbar.version>v5.0</xbar.version>
@@ -12,7 +12,7 @@ Strategie (bez jakéhokoli otevírání Chrome oken):
 1. CHROME TAB (tichý): Pokud je claude.ai záložka již otevřená v Chrome,
    zavolá API přes JavaScript – Cloudflare nás nepropustí (nemá co blokovat).
 
-2. PŘÍMÉ HTTP: Extrahuje cookies z Chrome DB + volá API přes tls-client.
+2. PŘÍMÉ HTTP: Extrahuje cookies z Chrome DB + volá API přes curl.
    Funguje dokud je cf_clearance platný (až 30 dní, stejné IP).
 
 3. CACHE: Pokud obě metody selžou, zobrazí poslední úspěšná data
@@ -38,13 +38,12 @@ SCRIPT_DIR  = os.path.dirname(os.path.realpath(__file__))
 CONFIG_FILE = os.path.join(SCRIPT_DIR, "config.json")
 CACHE_FILE  = os.path.join(SCRIPT_DIR, "cache.json")
 COOKIES_DB  = os.path.expanduser(
-    "~/Library/Application Support/Google/Chrome/Default/Cookies"
-)
+    "~/Library/Application Support/Google/Chrome/Default/Cookies")
+
 
 # ─────────────────────────────────────────────
 # Config a cache
 # ─────────────────────────────────────────────
-
 def load_config():
     if os.path.exists(CONFIG_FILE):
         with open(CONFIG_FILE) as f:
@@ -68,7 +67,6 @@ def save_cache(data):
 # ─────────────────────────────────────────────
 # Metoda A: Chrome tab přes AppleScript + XHR
 # ─────────────────────────────────────────────
-
 def run_applescript(script):
     with tempfile.NamedTemporaryFile(mode="w", suffix=".applescript", delete=False) as f:
         f.write(script)
@@ -116,9 +114,8 @@ end tell'''
 
 
 # ─────────────────────────────────────────────
-# Metoda B: Přímé HTTP přes tls-client + Chrome cookies
+# Metoda B: Přímé HTTP přes curl + Chrome cookies
 # ─────────────────────────────────────────────
-
 def get_chrome_aes_key():
     r = subprocess.run(
         ["security", "find-generic-password", "-w", "-s", "Chrome Safe Storage"],
@@ -196,28 +193,24 @@ def api_via_http(path, cookies):
         "sec-fetch-mode": "cors",
         "sec-fetch-dest": "empty",
     })
-
     resp = session.get(f"https://claude.ai{path}", timeout_seconds=10)
-
     if resp.status_code == 403 or (resp.status_code == 200 and "Just a moment" in resp.text):
         raise RuntimeError("CLOUDFLARE_BLOCK")
     if resp.status_code == 401:
         raise RuntimeError("SESSION_EXPIRED")
     if resp.status_code != 200:
         raise RuntimeError(f"HTTP_{resp.status_code}")
-
     return resp.json()
 
 
 # ─────────────────────────────────────────────
 # Orchestrace API volání
 # ─────────────────────────────────────────────
-
 _chrome_cookies_cache = None
+
 
 def call_api(path):
     global _chrome_cookies_cache
-
     # Metoda A: existující Claude.ai tab v Chrome
     try:
         return api_via_chrome_tab(path)
@@ -236,7 +229,6 @@ def call_api(path):
 # ─────────────────────────────────────────────
 # Formátování
 # ─────────────────────────────────────────────
-
 def format_bar(pct, width=8):
     filled = max(0, min(width, round(pct / 100 * width)))
     return "█" * filled + "░" * (width - filled)
@@ -296,11 +288,17 @@ def pick_best_org_and_usage(orgs, preferred_uuid=None):
 # Výstup xbar
 # ─────────────────────────────────────────────
 
-def print_data(five_pct, seven_pct, five_reset, seven_reset, org_name, note=None):
-    worst = max(five_pct, seven_pct)
-    icon  = "🔴" if worst >= 90 else "⚠️" if worst >= 75 else "🟠" if worst >= 50 else "🤖"
+def icon_for_pct(pct):
+    if pct >= 90: return "🔴"
+    if pct >= 75: return "⚠️"
+    if pct >= 50: return "🟠"
+    return "🤖"
 
-    print(f"{icon}{int(five_pct)}%")
+
+def print_data(five_pct, seven_pct, five_reset, seven_reset, org_name, note=None):
+    d_icon = icon_for_pct(five_pct)
+    w_icon = icon_for_pct(seven_pct)
+    print(f"D:{d_icon}{int(five_pct)}% · W:{w_icon}{int(seven_pct)}%")
     print("---")
     print(f"{org_name} | color=gray size=11")
     if note:
@@ -327,14 +325,13 @@ def print_from_cache(reason_line):
     cache = load_cache()
     if not cache.get("five_pct"):
         # Žádná cache
-        print("🤖 —")
+        print("D:🤖— · W:🤖—")
         print("---")
         print(reason_line)
         print("---")
         print("Refresh | refresh=true")
         print("Quit xbar | bash=/usr/bin/pkill param1=-x param2=xbar terminal=false")
         return
-
     age = cache_age_str(cache.get("cached_at", ""))
     print_data(
         five_pct   = cache.get("five_pct", 0),
@@ -349,7 +346,6 @@ def print_from_cache(reason_line):
 # ─────────────────────────────────────────────
 # Main
 # ─────────────────────────────────────────────
-
 def main():
     config         = load_config()
     preferred_uuid = config.get("org_uuid")
@@ -399,7 +395,6 @@ def main():
             print("Refresh | refresh=true")
         else:
             print_from_cache(err[:60])
-
     except Exception as e:
         print_from_cache(str(e)[:60])
 
